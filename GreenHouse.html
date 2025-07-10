@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Greenhouse</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    section {
+      min-height: 100vh;
+      scroll-snap-align: start;
+    }
+    html {
+      scroll-snap-type: y mandatory;
+      overflow-y: scroll;
+    }
+  </style>
+</head>
+
+<body class="bg-gradient-to-br from-green-50 to-green-200 text-gray-900">
+  <!-- Navigation Bar -->
+  <!-- Navigation Bar: Provides links to different sections of the greenhouse dashboard -->
+  <nav class="bg-green-600 text-white shadow p-4 sticky top-0 z-10">
+    <div class="flex justify-between items-center">
+      <h1 class="text-2xl font-bold">🌿 Smart Greenhouse</h1>
+      <ul class="flex gap-6 text-lg">
+        <li><a href="#home" class="hover:underline" onclick="navigate('home')">Sensor Data</a></li>
+        <li><a href="#graphs" class="hover:underline" onclick="navigate('graphs')">Graphs</a></li>
+        <li><a href="#control" class="hover:underline" onclick="navigate('control')">Control Panel</a></li>
+      </ul>
+    </div>
+  </nav>
+
+
+  <!-- Styled Alert Box: Displays warnings and alerts for abnormal sensor readings -->
+  <div id="alertBox" class="hidden fixed top-5 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-800 px-6 py-4 rounded shadow z-50 max-w-md w-full text-sm"></div>
+
+  <div class="w-full">
+    <!-- Home Page: Sensor Data Overview -->
+    <!-- Shows the latest readings from all sensors in a summary card -->
+    <section id="home" class="flex flex-col justify-center items-center p-6">
+      <h2 class="text-4xl font-bold text-green-800 mb-6">📈 Sensor Data</h2>
+      <div class="bg-white p-6 rounded-2xl shadow-lg border border-green-300 space-y-3 text-lg w-full max-w-2xl">
+        <p>🌡️ Temperature: <span class="font-semibold text-red-600" id="temperature">--</span> °C</p>
+        <p>💦 Humidity: <span class="font-semibold text-blue-600" id="humidity">--</span> %</p>
+        <p>🌱 Soil Moisture: <span class="font-semibold text-green-600" id="moisture">--</span> %</p>
+        <p>💧 Water Level: <span class="font-semibold text-indigo-600" id="waterLevel">--</span> %</p>
+        <p class="text-sm text-gray-500 mt-4">Last updated: <span id="lastUpdated">--</span></p>
+      </div>
+    </section>
+
+    <!-- Graphs Page: 24-hour Sensor Data Trends -->
+    <!-- Displays line charts for each sensor to visualize changes over the last 24 hours -->
+    <section id="graphs" class="hidden flex flex-col items-center justify-center p-6">
+      <h2 class="text-4xl font-bold text-green-800 mb-8">📊 Sensor Graphs (24h)</h2>
+      <div class="w-full flex flex-col space-y-10">
+        <div class="bg-white p-4 rounded shadow w-full h-screen">
+          <h3 class="text-xl font-semibold mb-2">🌡️ Temperature</h3>
+          <canvas id="temperatureChart" class="h-full w-full"></canvas>
+        </div>
+        <div class="bg-white p-4 rounded shadow w-full h-screen">
+          <h3 class="text-xl font-semibold mb-2">💦 Humidity</h3>
+          <canvas id="humidityChart" class="h-full w-full"></canvas>
+        </div>
+        <div class="bg-white p-4 rounded shadow w-full h-screen">
+          <h3 class="text-xl font-semibold mb-2">🌱 Soil Moisture</h3>
+          <canvas id="moistureChart" class="h-full w-full"></canvas>
+        </div>
+        <div class="bg-white p-4 rounded shadow w-full h-screen">
+          <h3 class="text-xl font-semibold mb-2">💧 Water Level</h3>
+          <canvas id="waterLevelChart" class="h-full w-full"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Control Panel Page: Manual Device Control -->
+    <!-- Allows the user to turn on/off devices like pump, fan, lights, and heater -->
+    <section id="control" class="hidden flex flex-col justify-center items-center p-6">
+      <h2 class="text-4xl font-bold text-green-800 mb-6">🕹️ Control Panel</h2>
+      <div class="bg-white p-6 rounded-2xl shadow-lg border border-green-300 w-full max-w-xl">
+        <div class="space-y-4" id="controlPanel"></div>
+      </div>
+    </section>
+  </div>
+
+
+  <!-- Main JavaScript Section: Handles UI logic, data updates, and interactivity -->
+  <script>
+    // List of controllable devices in the greenhouse
+    const devices = ["pump", "fan", "lights", "heater"];
+
+    // --- Visualization Page ---
+    // Dynamically adds a new section for advanced visualizations (gauge, progress, tank)
+    document.addEventListener("DOMContentLoaded", () => {
+      // Insert the new section after the graphs section
+      const graphsSection = document.getElementById("graphs");
+      const vizSection = document.createElement("section");
+      vizSection.id = "visualization";
+      vizSection.className = "hidden flex flex-col items-center justify-center p-6";
+      vizSection.innerHTML = `
+        <h2 class="text-4xl font-bold text-green-800 mb-8">🌡️ Visualizations</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
+          <!-- Temperature Gauge: Shows current temperature as a half-doughnut -->
+          <div class="bg-white p-6 rounded-2xl shadow-lg flex flex-col items-center">
+            <h3 class="text-xl font-semibold mb-4">Temperature Gauge</h3>
+            <canvas id="tempGauge" width="200" height="200"></canvas>
+          </div>
+          <!-- Soil Moisture Progress: Circular progress bar for soil moisture -->
+          <div class="bg-white p-6 rounded-2xl shadow-lg flex flex-col items-center">
+            <h3 class="text-xl font-semibold mb-4">Soil Moisture</h3>
+            <div class="relative w-32 h-32 flex items-center justify-center">
+              <svg class="absolute top-0 left-0" width="128" height="128">
+                <circle cx="64" cy="64" r="56" stroke="#e5e7eb" stroke-width="16" fill="none"/>
+                <circle id="moistureCircle" cx="64" cy="64" r="56" stroke="#34d399" stroke-width="16" fill="none"
+                  stroke-dasharray="352" stroke-dashoffset="352" stroke-linecap="round" transform="rotate(-90 64 64)"/>
+              </svg>
+              <span id="moisturePercent" class="text-2xl font-bold text-green-700">--%</span>
+            </div>
+          </div>
+          <!-- Water Level Tank: Animated tank fill for water level -->
+          <div class="bg-white p-6 rounded-2xl shadow-lg flex flex-col items-center">
+            <h3 class="text-xl font-semibold mb-4">Water Level</h3>
+            <div class="relative w-24 h-48 flex items-end justify-center">
+              <div class="absolute bottom-0 w-20 h-44 border-4 border-blue-300 rounded-b-3xl overflow-hidden bg-blue-50">
+                <div id="tankFill" class="absolute bottom-0 left-0 w-full bg-blue-400 transition-all duration-700 rounded-b-2xl" style="height:0%"></div>
+              </div>
+              <span id="tankPercent" class="absolute w-full text-center text-lg font-bold text-blue-700" style="bottom: -2rem;">--%</span>
+            </div>
+          </div>
+        </div>
+      `;
+      graphsSection.parentNode.insertBefore(vizSection, graphsSection.nextSibling);
+
+      // Add nav link for the new visualization section
+      const nav = document.querySelector("nav ul");
+      const li = document.createElement("li");
+      li.innerHTML = `<a href="#visualization" class="hover:underline" onclick="navigate('visualization')">Visualizations</a>`;
+      nav.appendChild(li);
+    });
+
+
+    // --- Visualization Update Functions ---
+    // Updates the visualization section with the latest sensor data
+    function updateVisualizations(data) {
+      // Temperature Gauge (using Chart.js doughnut)
+      // Shows temperature as a half-circle gauge
+      if (!window.tempGaugeChart) {
+        // Plugin to draw temperature value in the center of the gauge
+        const centerTextPlugin = {
+          id: 'centerText',
+          afterDraw: function(chart) {
+            const {ctx, chartArea: {width, height}} = chart;
+            ctx.save();
+            ctx.font = 'bold 2.5rem Arial';
+            ctx.fillStyle = '#f87171';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${data.temperature}°C`, width / 2, height / 1.25);
+            ctx.restore();
+          }
+        };
+        window.tempGaugeChart = new Chart(document.getElementById('tempGauge').getContext('2d'), {
+          type: 'doughnut',
+          data: {
+            labels: ['Temperature', ''],
+            datasets: [{
+              data: [data.temperature, 40 - data.temperature],
+              backgroundColor: ['#f87171', '#e5e7eb'],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            rotation: -90,
+            circumference: 180,
+            cutout: '70%',
+            plugins: {
+              legend: { display: false },
+              tooltip: { enabled: false }
+            }
+          },
+          plugins: [centerTextPlugin]
+        });
+      } else {
+        // Update gauge with new temperature
+        window.tempGaugeChart.data.datasets[0].data[0] = data.temperature;
+        window.tempGaugeChart.data.datasets[0].data[1] = 40 - data.temperature;
+        window.tempGaugeChart.update();
+      }
+
+      // Soil Moisture Circular Progress
+      // Animates the circular progress bar to reflect soil moisture
+      const percent = Math.max(0, Math.min(100, data.soil_moisture));
+      const circle = document.getElementById('moistureCircle');
+      if (circle) {
+        const dashoffset = 352 - (352 * percent / 100);
+        circle.setAttribute('stroke-dashoffset', dashoffset);
+      }
+      const percentText = document.getElementById('moisturePercent');
+      if (percentText) percentText.textContent = percent + "%";
+
+      // Water Level Tank
+      // Fills the tank graphic based on water level percentage
+      const tankFill = document.getElementById('tankFill');
+      if (tankFill) tankFill.style.height = percent + "%";
+      const tankPercent = document.getElementById('tankPercent');
+      if (tankPercent) tankPercent.textContent = data.water_level + "%";
+    }
+
+
+    // Patch updateSensorDisplay to also update visualizations
+    // Ensures that whenever sensor data is updated, the visualizations are also refreshed
+    const origUpdateSensorDisplay = updateSensorDisplay;
+    updateSensorDisplay = function(data) {
+      origUpdateSensorDisplay(data);
+      setTimeout(() => {
+        if (document.getElementById('visualization')) updateVisualizations(data);
+      }, 100); // Wait for DOM
+    };
+
+    // Generate time labels for 24-hour charts (e.g., 0:00, 1:00, ...)
+    const timeLabels = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+
+    // Chart.js line charts for each sensor (temperature, humidity, soil moisture, water level)
+    const charts = {
+      temperature: new Chart(document.getElementById('temperatureChart'), {
+        type: 'line',
+        data: { labels: timeLabels, datasets: [{ label: 'Temp (°C)', data: Array(24).fill(null), borderColor: 'red' }] }
+      }),
+      humidity: new Chart(document.getElementById('humidityChart'), {
+        type: 'line',
+        data: { labels: timeLabels, datasets: [{ label: 'Humidity (%)', data: Array(24).fill(null), borderColor: 'blue' }] }
+      }),
+      soil_moisture: new Chart(document.getElementById('moistureChart'), {
+        type: 'line',
+        data: { labels: timeLabels, datasets: [{ label: 'Soil Moisture (%)', data: Array(24).fill(null), borderColor: 'green' }] }
+      }),
+      water_level: new Chart(document.getElementById('waterLevelChart'), {
+        type: 'line',
+        data: { labels: timeLabels, datasets: [{ label: 'Water Level (%)', data: Array(24).fill(null), borderColor: 'indigo' }] }
+      })
+    };
+
+    // Updates the main sensor data display and the charts
+    function updateSensorDisplay(data) {
+      checkAlerts(data); // Check for any abnormal readings and show alerts
+      document.getElementById("temperature").textContent = data.temperature;
+      document.getElementById("humidity").textContent = data.humidity;
+      document.getElementById("moisture").textContent = data.soil_moisture;
+      document.getElementById("waterLevel").textContent = data.water_level;
+      document.getElementById("lastUpdated").textContent = new Date().toLocaleTimeString();
+
+      // Update the current hour's value in each chart
+      const hour = new Date().getHours();
+      charts.temperature.data.datasets[0].data[hour] = data.temperature;
+      charts.humidity.data.datasets[0].data[hour] = data.humidity;
+      charts.soil_moisture.data.datasets[0].data[hour] = data.soil_moisture;
+      charts.water_level.data.datasets[0].data[hour] = data.water_level;
+      Object.values(charts).forEach(chart => chart.update());
+    }
+
+
+    // Fetches real sensor data from the backend API and updates the dashboard
+    async function fetchSensorData() {
+      try {
+        // Replace '/api/sensors' with your actual backend endpoint
+        const response = await fetch('/api/sensors');
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+        updateSensorDisplay(data);
+      } catch (err) {
+        console.error("Failed to fetch sensor data:", err);
+      }
+    }
+
+
+    // Handles toggling device state (on/off) in the control panel and sends command to backend
+    async function toggleDevice(device) {
+      const btn = document.getElementById(device + "Btn");
+      const isOn = btn.classList.contains("bg-green-500");
+      const newState = isOn ? "off" : "on";
+      btn.textContent = newState.toUpperCase();
+      btn.classList.toggle("bg-green-500", newState === "on");
+      btn.classList.toggle("bg-red-500", newState === "off");
+      // Send control command to backend
+      try {
+        // Replace '/api/device' with your actual backend endpoint
+        await fetch('/api/device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device: device, state: newState })
+        });
+      } catch (err) {
+        console.error(`Failed to send command for ${device}:`, err);
+      }
+    }
+
+
+    // Renders the control panel with device buttons
+    // Each device gets a button to toggle its state
+    function renderControlPanel() {
+      const container = document.getElementById("controlPanel");
+      devices.forEach(device => {
+        const div = document.createElement("div");
+        div.className = "flex justify-between items-center";
+
+        const label = document.createElement("label");
+        label.textContent = device.charAt(0).toUpperCase() + device.slice(1);
+        label.className = "font-semibold text-gray-800";
+
+        const button = document.createElement("button");
+        button.id = device + "Btn";
+        button.textContent = "OFF";
+        button.className = "bg-red-500 text-white px-4 py-2 rounded-lg shadow hover:scale-105 transform transition duration-200";
+        button.onclick = () => toggleDevice(device);
+
+        div.appendChild(label);
+        div.appendChild(button);
+        container.appendChild(div);
+      });
+    }
+
+
+    // Checks sensor data for abnormal values and displays alerts if needed
+    // Alerts are shown for temperature, humidity, and soil moisture outside optimal range
+    function checkAlerts(data) {
+      let alerts = [];
+      if (data.temperature < 15 ) {
+        alerts.push(`Temperature too low for tomatoes. Current: ${data.temperature}°C`);
+      }
+      if (data.temperature > 35) {
+        alerts.push(`Temperature too high for tomatoes. Current: ${data.temperature}°C`);
+      }
+      if (data.soil_moisture < 40) {
+        // Alert if soil moisture is too low for tomatoes
+        alerts.push(`Soil moisture too Low. Current: ${data.soil_moisture}%`);
+      }
+      if (data.soil_moisture > 80) {
+        alerts.push(`Soil moisture too High. Current: ${data.soil_moisture}%`);
+        }
+      if (data.humidity < 50 ) {
+        alerts.push(`Humidity too low for tomatoes. Current: ${data.humidity}%`);
+      }
+      if (data.humidity > 90) {
+        alerts.push(`Humidity too high for tomatoes. Current: ${data.humidity}%`);
+        }
+      if (alerts.length > 0) {
+        const alertBox = document.getElementById("alertBox");
+        const alertSound = document.getElementById("alertSound");
+        alertBox.innerHTML = alerts.map(msg => `<div>⚠️ ${msg}</div>`).join('');
+        alertBox.classList.remove("hidden");
+        if (alertSound) alertSound.play().catch(e => console.warn("Audio play failed:", e));
+        setTimeout(() => alertBox.classList.add("hidden"), 10000);
+      }
+    }
+
+
+    // Handles navigation between different dashboard sections
+    function navigate(section) {
+      document.querySelectorAll("section").forEach(s => s.classList.add("hidden"));
+      document.getElementById(section).classList.remove("hidden");
+    }
+
+    // Initialize the dashboard: render control panel and fetch initial sensor data
+    renderControlPanel();
+    fetchSensorData();
+    // Refresh sensor data every 60 seconds
+    setInterval(fetchSensorData, 60000);
+  </script>
+
+  <!-- Optional Sound Alert: Plays a beep when an alert is triggered -->
+  <audio id="alertSound" src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" preload="auto"></audio>
+</body>
+
+</html>
